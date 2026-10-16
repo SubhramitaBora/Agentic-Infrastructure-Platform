@@ -3,6 +3,7 @@ from typing import Any
 
 
 PRIORITIES = {"Highest", "High", "Medium", "Low", "Lowest"}
+SUPPORTED_ISSUE_TYPES = {"Epic", "Story", "Task", "Bug", "Sub-task"}
 
 # Keep these templates explicit so teams can adjust them to their Jira process.
 ISSUE_FORMAT_RULES = {
@@ -79,12 +80,12 @@ def validate_jira_issue(arguments: dict[str, Any]) -> list[dict[str, str]]:
     """Return blocking, field-specific issues before a Jira create call."""
     errors = []
     issue_type = arguments.get("issue_type")
-    if issue_type not in ISSUE_FORMAT_RULES:
+    if issue_type not in SUPPORTED_ISSUE_TYPES:
         errors.append(_error(
             "issue_type",
-            "Only Task and Bug formats are configured.",
+            "This Jira issue type is not supported by the agent.",
             str(issue_type or ""),
-            "Choose Task or Bug.",
+            "Choose Epic, Story, Task, Bug, or Sub-task.",
         ))
         return errors
 
@@ -115,6 +116,18 @@ def validate_jira_issue(arguments: dict[str, Any]) -> list[dict[str, str]]:
             "description", "Description is required.", str(description or ""),
             "Fill in the required sections for this issue type.",
         ))
+        return errors
+
+    parent_key = arguments.get("parent_key")
+    if issue_type == "Sub-task" and not isinstance(parent_key, str):
+        errors.append(_error(
+            "parent_key", "A Sub-task must have a parent issue.", "[missing]",
+            "Provide the parent issue key, such as AD-12.",
+        ))
+
+    # Task and Bug use the team's detailed templates. Epic, Story, and Sub-task
+    # accept a normal description; their available fields can vary by project.
+    if issue_type not in ISSUE_FORMAT_RULES:
         return errors
 
     template = ISSUE_FORMAT_RULES[issue_type]

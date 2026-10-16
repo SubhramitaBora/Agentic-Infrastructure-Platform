@@ -78,6 +78,20 @@ def get_page(page_id: str) -> dict:
 def create_page(space_id: str, title: str, body: str, parent_id: str | None = None) -> dict:
     if not all(isinstance(value, str) and value.strip() for value in (space_id, title, body)):
         raise ValueError("Space ID, page title, and body are required.")
+    existing = _request(
+        "GET", f"/api/v2/spaces/{space_id}/pages",
+        params={"title": title.strip(), "limit": 25},
+    )
+    duplicate = next(
+        (page for page in existing.get("results", [])
+         if str(page.get("title", "")).casefold() == title.strip().casefold()),
+        None,
+    )
+    if duplicate:
+        raise ValueError(
+            f"A page with this exact title already exists in the space "
+            f"(page ID {duplicate.get('id')}). Review the existing page instead of duplicating it."
+        )
     payload = {
         "spaceId": space_id,
         "status": "current",
@@ -166,6 +180,31 @@ def create_inline_comment(
     )
     return {"id": data.get("id"), "page_id": data.get("pageId"),
             "resolution_status": data.get("resolutionStatus")}
+
+
+def get_footer_comments(page_id: str, limit: int = 50) -> list[dict]:
+    data = _request(
+        "GET", f"/api/v2/pages/{page_id}/footer-comments",
+        params={"limit": min(max(limit, 1), 50), "body-format": "storage"},
+    )
+    results = []
+    for row in data.get("results", []):
+        storage = (row.get("body") or {}).get("storage") or {}
+        results.append({"id": row.get("id"), "body": storage.get("value", "")})
+    return results
+
+
+def create_footer_comment(page_id: str, comment: str) -> dict:
+    if not comment.strip():
+        raise ValueError("A comment is required.")
+    data = _request(
+        "POST", "/api/v2/footer-comments",
+        json={
+            "pageId": page_id,
+            "body": {"representation": "storage", "value": f"<p>{escape(comment.strip(), quote=False)}</p>"},
+        },
+    )
+    return {"id": data.get("id"), "page_id": data.get("pageId")}
 
 
 def update_page(page_id: str, title: str, body: str, version: int) -> dict:

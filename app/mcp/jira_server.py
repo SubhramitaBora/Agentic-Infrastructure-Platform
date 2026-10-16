@@ -4,6 +4,7 @@ from app.integrations.jira import (
     create_issue,
     get_issue,
     search_issues,
+    transition_issue,
     update_issue,
 )
 from app.config import JIRA_BASE_URL
@@ -18,9 +19,11 @@ def create_jira_issue(
     description: str,
     issue_type: str = "Task",
     priority: str = "Medium",
+    parent_key: str | None = None,
 ) -> dict:
     """
-    Create a Jira Task or Bug in the specified Jira project.
+    Create an Epic, Story, Task, Bug, or Sub-task in the specified Jira project.
+    Sub-tasks require a parent issue key; Stories may optionally be linked to an Epic.
     """
 
     result = create_issue(
@@ -29,12 +32,15 @@ def create_jira_issue(
         summary=summary,
         description=description,
         priority=priority,
+        parent_key=parent_key,
     )
 
     return {
         "status": "success",
         "operation": "create_jira_issue",
         "project_key": project_key,
+        "issue_type": issue_type,
+        "parent_key": parent_key,
         "issue_key": result["key"],
         "issue_id": result["id"],
         "issue_url": f"{JIRA_BASE_URL.rstrip('/')}/browse/{result['key']}",
@@ -109,6 +115,18 @@ def update_jira_issue(
         "issue_key": result["key"],
         "updated_fields": result["updated_fields"],
         "issue_url": f"{JIRA_BASE_URL.rstrip('/')}/browse/{result['key']}",
+    }
+
+
+@mcp.tool()
+def transition_jira_issue(issue_key: str, target_status: str) -> dict:
+    """Move an issue to a target status through a currently available workflow transition."""
+    result = transition_issue(issue_key, target_status)
+    return {
+        "status": "success",
+        "operation": "transition_jira_issue",
+        **result,
+        "issue_url": f"{JIRA_BASE_URL.rstrip('/')}/browse/{result['issue_key']}",
     }
 
 

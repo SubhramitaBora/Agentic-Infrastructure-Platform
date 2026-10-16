@@ -2,6 +2,7 @@ import logging
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+from fastapi.responses import JSONResponse
 
 from app.agents.devops_agent import devops_agent
 
@@ -30,10 +31,13 @@ async def agent_gateway(user_request: UserRequest):
     try:
         result = await devops_agent(request)
 
-        return {
+        response_body = {
             "received_request": request,
             "routing_result": result
         }
+        if result.get("status") == "needs_input":
+            return JSONResponse(status_code=422, content=response_body)
+        return response_body
 
     except Exception:
         logger.exception("Agent request failed")

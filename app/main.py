@@ -1,13 +1,23 @@
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from fastapi.responses import JSONResponse
 
 from app.agents.devops_agent import devops_agent
+from app.llm.hydra_client import close_hydra
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    yield
+    await close_hydra()
+
 
 app = FastAPI(
-    title="Agentic Infrastructure Operations Platform"
+    title="Agentic Infrastructure Operations Platform",
+    lifespan=lifespan,
 )
 logger = logging.getLogger(__name__)
 

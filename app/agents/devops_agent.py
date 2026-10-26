@@ -875,31 +875,30 @@ async def run_agent_loop(request: str, agent_scope: str | None = None) -> dict:
 
     for step in range(1, MAX_AGENT_STEPS + 1):
         response = await chat_with_hydra(messages, active_tools)
-        message = response["choices"][0]["message"]
-        message_tool_calls = message.get("tool_calls") or []
+        message = response.choices[0].message
+        message_tool_calls = message.tool_calls or []
 
         if not message_tool_calls:
             return {
                 "agent": "devops_agent",
                 "status": "completed",
-                "answer": message.get("content") or "I could not produce an answer.",
+                "answer": message.content or "I could not produce an answer.",
                 "steps": step,
                 "tool_calls": tool_calls_made,
             }
 
-        messages.append(message)
+        messages.append(message.model_dump(exclude_none=True))
         for tool_call in message_tool_calls:
             name = "unknown"
             try:
                 if tool_calls_made >= MAX_TOOL_CALLS:
                     raise ValueError("The request exceeded the tool call limit.")
-                function = tool_call.get("function", {})
-                name = function.get("name", "unknown")
+                name = tool_call.function.name
                 if name not in active_tool_names:
                     raise ValueError(
                         f"The {agent_scope or 'DevOps'} agent is not allowed to use tool '{name}'."
                     )
-                arguments = json.loads(function.get("arguments") or "{}")
+                arguments = json.loads(tool_call.function.arguments or "{}")
                 if not isinstance(arguments, dict):
                     raise ValueError("Tool arguments must be a JSON object.")
                 if name in {"create_jira_issue", "create_github_issue"}:
@@ -1135,7 +1134,7 @@ async def run_agent_loop(request: str, agent_scope: str | None = None) -> dict:
             messages.append(
                 {
                     "role": "tool",
-                    "tool_call_id": tool_call["id"],
+                    "tool_call_id": tool_call.id,
                     "content": json.dumps(result_payload),
                 }
             )

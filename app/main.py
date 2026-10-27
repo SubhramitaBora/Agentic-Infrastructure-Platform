@@ -6,13 +6,13 @@ from pydantic import BaseModel
 from fastapi.responses import JSONResponse
 
 from app.agents.devops_agent import devops_agent
-from app.llm.hydra_client import close_hydra
+from app.llm.client import close_model_client
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     yield
-    await close_hydra()
+    await close_model_client()
 
 
 app = FastAPI(

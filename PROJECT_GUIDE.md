@@ -6,7 +6,7 @@ This guide describes the repository as it is currently implemented. It is intend
 
 The Agentic Infrastructure Platform is a Python application that accepts natural-language operations requests and can use a bounded set of Jira, GitHub, and Confluence tools. Examples include finding or creating Jira issues, reading or updating GitHub issues, and searching, reviewing, commenting on, creating, or updating Confluence pages.
 
-The language model does not directly log in to those services. The application exposes a list of typed tools to the model, validates the model's proposed tool call, and executes the corresponding application code. External service credentials stay in the app's environment. The current live model client is the OpenAI Python SDK pointed at an OpenAI-compatible Hydra/LiteLLM endpoint. The SDK still communicates with Hydra over HTTP; it is a Python client library, not a way to avoid network requests.
+The language model does not directly log in to those services. The application exposes a list of typed tools to the model, validates the model's proposed tool call, and executes the corresponding application code. External service credentials stay in the app's environment. `LLM_PROVIDER` selects either the OpenAI Python SDK pointed at Hydra/LiteLLM or the Groq Python SDK. The SDKs communicate with their providers over HTTP; they are Python clients, not a way to avoid network requests.
 
 This is a bounded agent system, not an unrestricted autonomous service. The shared agent loop has a six-step limit and a twelve-tool-call limit per request. Jira and GitHub writes execute immediately when requested; this version does not pause for human approval.
 
@@ -44,9 +44,9 @@ The three service MCP servers are currently launched as local subprocesses over 
 ## 3. Prerequisites and setup
 
 - Python 3.10 or newer.
-- Network access from this application machine to the Hydra/LiteLLM endpoint and to whichever external services are being used.
+- Network access from this application machine to the selected model provider and to whichever external services are being used.
 - Credentials and permissions for each enabled service.
-- A Hydra/LiteLLM model alias that accepts OpenAI-compatible Chat Completions requests and supports function/tool calling. Continue.dev working on another machine does not automatically configure this app; use the endpoint and alias from that Hydra deployment, reachable from this app machine.
+- If using Hydra: a Hydra/LiteLLM model alias that accepts OpenAI-compatible Chat Completions requests and supports function/tool calling. Continue.dev working on another machine does not automatically configure this app; use the endpoint and alias from that deployment, reachable from this app machine. If using Groq: a Groq model and key configured in `.env`; the selected model must support tool calling for service actions.
 
 From PowerShell at the repository root:
 
@@ -64,6 +64,7 @@ Edit `.env` with your actual values. Do not commit `.env`, paste secrets into is
 
 | Variable | Purpose |
 | --- | --- |
+| `LLM_PROVIDER` | Model used by the terminal, FastAPI, router, and agent. Set to `hydra` (default) or `groq`. |
 | `HYDRA_LITELLM_BASE_URL` | OpenAI-compatible API root reachable from this machine, commonly `http://<Hydra-host>:<port>/v1`. Do not use `localhost` if Hydra is on another machine. |
 | `HYDRA_MODEL` | The model alias configured and served by Hydra/LiteLLM. |
 | `HYDRA_API_KEY` | LiteLLM proxy key if the proxy requires client authentication. It is not automatically the upstream model-provider key. Leave empty if the proxy has no auth; the client supplies a placeholder key for SDK construction. |
@@ -77,7 +78,7 @@ Edit `.env` with your actual values. Do not commit `.env`, paste secrets into is
 | `GITHUB_TOKEN` | GitHub token with access to selected repositories and requested operations. |
 | `GITHUB_OWNER` | Default GitHub owner; current code defaults to `SubhramitaBora`. |
 | `GITHUB_REPO` | Default repository; current code defaults to `Agentic-Workflow`. |
-| `GROQ_API_KEY`, `GROQ_MODEL` | Legacy standalone Groq client configuration. The active agents currently call Hydra, not Groq; `test_groq.py` uses this legacy client. |
+| `GROQ_API_KEY`, `GROQ_MODEL` | Groq credentials and model ID. Required when `LLM_PROVIDER=groq`; `test_groq.py` also uses this client directly. |
 
 If the Hydra host is on another computer, configure the server to listen on a network interface reachable from the app machine, permit the port through the host firewall, and use the server's DNS name or LAN IP. Do not put `0.0.0.0` in the client URL; that is a server bind address, not the destination address a client connects to.
 
@@ -111,13 +112,13 @@ Open `http://127.0.0.1:8000/docs` for Swagger UI. The primary endpoint is `POST 
 
 The response contains `received_request` and `routing_result`. A rejected Jira or Confluence draft can return HTTP 422 with validation details. Unexpected failures return a generic HTTP 502 body; the detailed traceback is written to the server console.
 
-### Simple Hydra connectivity check
+### Model connectivity checks
 
 ```powershell
 python test_hydra.py
 ```
 
-This exercises a plain-text model request via the same Hydra client. It does not test tool calling or Jira credentials. Run the app chat with a request requiring one tool to check the tool-calling path.
+`python test_hydra.py` exercises a plain-text model request via the Hydra client. `python test_groq.py` exercises a plain-text Groq request. These scripts do not test tool calling or Jira credentials. Run the app chat with a request requiring one tool to check the selected provider's tool-calling path.
 
 ## 5. Supported capabilities
 
@@ -197,8 +198,9 @@ The three service agents are thin specialized entry points over one shared model
 
 | File | Responsibility |
 | --- | --- |
-| `app/llm/hydra_client.py` | Creates a reusable `AsyncOpenAI` client configured with Hydra's OpenAI-compatible LiteLLM base URL, model alias, optional proxy key, and timeout. Provides text-only and tool-aware chat methods and closes the client on application shutdown. |
-| `app/llm/groq_client.py` | Legacy Groq SDK client. The active router and agent import Hydra; this file remains for the standalone Groq smoke script unless deliberately removed. |
+| `app/llm/client.py` | Provider selector used by the router and agent. Reads `LLM_PROVIDER`, lazily imports the selected client, exposes provider-neutral text/tool calls, and closes provider resources on app shutdown. |
+| `app/llm/hydra_client.py` | Creates a reusable `AsyncOpenAI` client configured with Hydra's OpenAI-compatible LiteLLM base URL, model alias, optional proxy key, and timeout. Provides text-only and tool-aware chat methods. |
+| `app/llm/groq_client.py` | Groq SDK client used by the provider selector when `LLM_PROVIDER=groq` and by the standalone Groq smoke script. |
 
 ### MCP servers and gateway
 
@@ -226,7 +228,7 @@ The OpenAI SDK is used for the model connection only. Jira, GitHub, and Confluen
 | File | Purpose / caution |
 | --- | --- |
 | `test_hydra.py` | Manual plain-text Hydra connection smoke script; does not test tool calling. |
-| `test_groq.py` | Manual Groq smoke script using the legacy Groq client and `GROQ_API_KEY`; unrelated to the active Hydra agent path. |
+| `test_groq.py` | Manual Groq smoke script using the Groq client and `GROQ_API_KEY`; tests plain text rather than tool calling. |
 | `test_gateway.py` | Manual Jira MCP gateway example. It requests a hard-coded issue key; edit it and ensure access before running. |
 | `test_jira_agent.py` | Earlier Jira-agent manual script. Its current call style may be stale because `jira_agent()` is async; prefer the supported terminal or FastAPI interface unless updating this script. |
 | `test_mcp_client.py` | Manual MCP client check that starts the Jira MCP server and lists its tools. |
@@ -249,12 +251,13 @@ For a new external-service action:
 
 ## 9. Known constraints and handoff notes
 
+- `LLM_PROVIDER` selects `hydra` or `groq`; it defaults to `hydra`. Set the corresponding provider credentials and model configuration in `.env`.
 - `HYDRA_MODEL` must exactly match a model alias Hydra/LiteLLM serves. The client base URL must be reachable from the application machine and should be the API root, normally ending in `/v1`.
-- A working text completion alone does not prove model tool calling works. The selected model and Hydra/LiteLLM routing configuration must support the OpenAI-compatible tool format used in `chat_with_hydra()`.
+- A working text completion alone does not prove model tool calling works. The selected model and provider must support the tool-call format used by the agent loop.
 - Jira project issue types, workflow transitions, permissions, custom fields, and priority names vary by project. The integration checks create metadata for the issue type, but project-required custom fields are not modeled here.
 - The project has no approval workflow for external writes. Changes can take effect as soon as the user request is processed.
 - No daily Confluence scan, email notification system, automatic user assignment, remote MCP deployment, persistent chat memory, or central audit database is implemented in this repository.
-- `test_groq.py` and `groq_client.py` are leftovers from the earlier model provider path. Do not mistake them for the active runtime provider.
+- Groq is available as an active provider when selected, but is not used by default.
 
 ## 10. Safe reproduction checklist
 

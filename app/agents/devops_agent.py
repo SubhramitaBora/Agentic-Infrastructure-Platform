@@ -9,7 +9,7 @@ from app.config import GITHUB_OWNER, GITHUB_REPO, JIRA_PROJECT_KEY
 from app.agents.confluence_validator import validate_confluence_page
 from app.agents.issue_validator import validate_jira_issue
 from app.agents.agent_gateway import classify_request
-from app.llm.hydra_client import ask_hydra, chat_with_hydra
+from app.llm.client import ask_model, chat_with_model
 from app.mcp.gateway import mcp_gateway
 
 
@@ -392,7 +392,7 @@ async def _clean_confluence_page(page_id: str, focus: str) -> dict:
         "Return only the complete XML body "
         "fragment, with no Markdown fences or commentary.\n\nPAGE BODY:\n" + old_body
     )
-    cleaned_body = (await ask_hydra(prompt) or "").strip()
+    cleaned_body = (await ask_model(prompt) or "").strip()
     cleaned_body = re.sub(r"^```(?:xml|html)?\s*|\s*```$", "", cleaned_body, flags=re.IGNORECASE)
     _validate_storage_fragment(cleaned_body)
     cleaned_parser = _PageTextParser()
@@ -525,7 +525,7 @@ async def _review_confluence_page(page_id: str) -> dict:
         "Do not report subjective preferences as errors.\n\nPAGE TITLE: "
         + str(page.get("title", "")) + "\nPAGE TEXT:\n" + visible_text
     )
-    raw = (await ask_hydra(prompt) or "").strip()
+    raw = (await ask_model(prompt) or "").strip()
     raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.IGNORECASE)
     try:
         findings = json.loads(raw)
@@ -874,7 +874,7 @@ async def run_agent_loop(request: str, agent_scope: str | None = None) -> dict:
     confluence_search_completed = False
 
     for step in range(1, MAX_AGENT_STEPS + 1):
-        response = await chat_with_hydra(messages, active_tools)
+        response = await chat_with_model(messages, active_tools)
         message = response.choices[0].message
         message_tool_calls = message.tool_calls or []
 

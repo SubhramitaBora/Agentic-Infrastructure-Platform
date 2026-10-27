@@ -4,11 +4,11 @@ import asyncio
 import json
 
 from app.agents.devops_agent import devops_agent
-from app.llm.hydra_client import close_hydra
+from app.llm.client import close_model_client
 
 
 async def _chat() -> None:
-    print("Hydra DevOps agent chat. Type 'exit' or 'quit' to stop.")
+    print("DevOps agent chat. Type 'exit' or 'quit' to stop.")
     try:
         while True:
             try:
@@ -36,7 +36,7 @@ async def _chat() -> None:
                 print("Agent>")
                 print(json.dumps(result, indent=2, ensure_ascii=False))
     finally:
-        await close_hydra()
+        await close_model_client()
 
 
 def main() -> None:

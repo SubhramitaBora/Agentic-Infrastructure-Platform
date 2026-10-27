@@ -2,7 +2,7 @@
 
 import re
 
-from app.llm.hydra_client import ask_hydra
+from app.llm.client import ask_model
 
 
 def _fallback_route(request: str) -> str:
@@ -22,7 +22,7 @@ def _fallback_route(request: str) -> str:
 
 
 async def classify_request(request: str) -> str:
-    """Classify the request with Hydra; the DevOps agent performs delegation."""
+    """Classify the request with the configured model provider."""
     prompt = (
         "Choose exactly one destination for this user request. Return only one "
         "lowercase word from: jira, github, confluence, devops. Choose a specialist "
@@ -31,7 +31,7 @@ async def classify_request(request: str) -> str:
         "Do not execute the request; classify it only.\n\nREQUEST:\n" + request
     )
     try:
-        choice = (await ask_hydra(prompt) or "").strip().casefold()
+        choice = (await ask_model(prompt) or "").strip().casefold()
         match = re.fullmatch(r"(jira|github|confluence|devops)[.!]?", choice)
         destination = match.group(1) if match else _fallback_route(request)
     except Exception:

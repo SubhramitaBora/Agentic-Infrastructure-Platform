@@ -21,6 +21,8 @@ GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 GITHUB_OWNER = os.getenv("GITHUB_OWNER", "SubhramitaBora")
 GITHUB_REPO = os.getenv("GITHUB_REPO", "Agentic-Workflow")
 
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "hydra").strip().casefold()
+
 HYDRA_LITELLM_BASE_URL = os.getenv("HYDRA_LITELLM_BASE_URL")
 HYDRA_API_KEY = os.getenv("HYDRA_API_KEY")
 HYDRA_MODEL = os.getenv("HYDRA_MODEL")
